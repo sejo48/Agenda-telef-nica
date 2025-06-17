@@ -31,6 +31,15 @@
         ::placeholder {
             color: #9ca3af;
         }
+        /* Estilos para el modal y toast */
+        #modal.active #modal-content {
+            transform: scale(1);
+            opacity: 1;
+        }
+        #toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen flex flex-col items-center p-4 sm:p-6">
@@ -85,25 +94,35 @@
         <div id="contact-list" class="space-y-4">
             <!-- Los contactos se insertarán aquí dinámicamente -->
         </div>
-
+    </div>
+    
+    <!-- Modal de Confirmación/Alerta -->
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 transition-opacity duration-300 opacity-0 pointer-events-none">
+        <div id="modal-content" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 transform transition-all scale-95 opacity-0 duration-300">
+            <h3 id="modal-title" class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4"></h3>
+            <p id="modal-message" class="text-gray-600 dark:text-gray-300 mb-6"></p>
+            <div id="modal-buttons" class="flex justify-end gap-3">
+                <!-- Los botones se insertarán aquí dinámicamente -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notificación Toast -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-green-600 text-white py-2 px-5 rounded-lg shadow-xl transform translate-y-20 opacity-0 transition-all duration-300 ease-out z-50">
+        <p id="toast-message"></p>
     </div>
 
     <!-- Módulo de Firebase -->
     <script type="module">
-        // Importaciones de Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- CONFIGURACIÓN DE FIREBASE ---
-        
-        // La configuración de Firebase será inyectada aquí por el entorno.
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-
-        // Obtenemos el ID de la app y del usuario para almacenar los datos de forma segura.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         let userId = null;
 
@@ -112,30 +131,73 @@
         const contactList = document.getElementById('contact-list');
         const loader = document.getElementById('loader');
         const authInfo = document.getElementById('auth-info');
+        const modal = document.getElementById('modal');
+        const modalContent = document.getElementById('modal-content');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalButtons = document.getElementById('modal-buttons');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+
+        // --- SISTEMA DE NOTIFICACIONES (MODAL Y TOAST) ---
+
+        /**
+         * Muestra una notificación "toast" que desaparece automáticamente.
+         * @param {string} message - El mensaje a mostrar.
+         * @param {boolean} isError - Si es true, muestra el toast en color rojo.
+         */
+        function showToast(message, isError = false) {
+            toastMessage.textContent = message;
+            toast.className = `fixed bottom-5 right-5 text-white py-2 px-5 rounded-lg shadow-xl transform transition-all duration-300 ease-out z-50 ${isError ? 'bg-red-600' : 'bg-green-600'} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        /**
+         * Muestra un modal de confirmación o alerta.
+         * @param {string} title - El título del modal.
+         * @param {string} message - El mensaje del modal.
+         * @param {Array} buttons - Un array de objetos para los botones. Ej: [{text: 'OK', class: 'bg-blue-500', callback: () => {}}]
+         */
+        function showModal(title, message, buttons) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            modalButtons.innerHTML = ''; // Limpiar botones anteriores
+
+            buttons.forEach(btnInfo => {
+                const button = document.createElement('button');
+                button.textContent = btnInfo.text;
+                button.className = `font-bold py-2 px-4 rounded-lg transition-opacity hover:opacity-80 ${btnInfo.class}`;
+                button.onclick = () => {
+                    if (btnInfo.callback) btnInfo.callback();
+                    hideModal();
+                };
+                modalButtons.appendChild(button);
+            });
+            
+            modal.classList.remove('pointer-events-none', 'opacity-0');
+            modal.classList.add('active');
+        }
+
+        /** Oculta el modal. */
+        function hideModal() {
+            modal.classList.add('pointer-events-none', 'opacity-0');
+            modal.classList.remove('active');
+        }
 
         // --- AUTENTICACIÓN ---
-        
-        /**
-         * Maneja el estado de la autenticación. Cuando el usuario inicia sesión,
-         * se obtiene su ID y se activa el listener para los contactos.
-         */
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, user => {
             if (user) {
-                console.log("Usuario autenticado:", user.uid);
                 userId = user.uid;
                 authInfo.textContent = `Sesión iniciada. ID: ${userId}`;
                 setupContactListener();
             } else {
-                console.log("Usuario no autenticado.");
                 userId = null;
                 authInfo.textContent = 'Iniciando sesión anónima...';
             }
         });
 
-        /**
-         * Inicia sesión, ya sea con un token personalizado (si está disponible)
-         * o de forma anónima para permitir el uso de la app sin registro.
-         */
         async function authenticateUser() {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -146,156 +208,110 @@
             } catch (error) {
                 console.error("Error de autenticación:", error);
                 authInfo.textContent = 'Error al iniciar sesión.';
+                showModal('Error de Autenticación', 'No se pudo iniciar sesión. Por favor, recarga la página.');
             }
         }
         
         // --- LÓGICA DE FIRESTORE ---
-
-        /**
-         * Configura el listener de Firestore (onSnapshot) que se actualiza en tiempo real.
-         * Cada vez que hay un cambio en la base de datos (añadir, borrar), la lista se actualiza sola.
-         */
         function setupContactListener() {
-            if (!userId) {
-                console.log("No se puede configurar el listener: userId es nulo.");
-                return;
-            }
+            if (!userId) return;
             const contactsCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'contacts');
-            const q = query(contactsCollectionRef); // Podríamos añadir orderBy si tuvieramos un timestamp
+            const q = query(contactsCollectionRef);
 
-            onSnapshot(q, (snapshot) => {
-                loader.style.display = 'none'; // Ocultar el loader una vez que llegan los datos
-                const contacts = [];
-                snapshot.forEach((doc) => {
-                    contacts.push({ id: doc.id, ...doc.data() });
-                });
+            onSnapshot(q, snapshot => {
+                loader.style.display = 'none';
+                const contacts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderContacts(contacts);
-            }, (error) => {
+            }, error => {
                 console.error("Error al obtener contactos:", error);
                 loader.innerHTML = '<p class="text-red-500">Error al cargar los contactos.</p>';
             });
         }
         
-        /**
-         * Maneja el envío del formulario para agregar un nuevo contacto a Firestore.
-         */
-        contactForm.addEventListener('submit', async (e) => {
+        contactForm.addEventListener('submit', async e => {
             e.preventDefault();
             if (!userId) {
-                alert("Debes iniciar sesión para guardar contactos.");
+                showModal('Error', 'Debes tener una sesión activa para guardar contactos. Por favor, recarga la página.', [{ text: 'Aceptar', class: 'bg-blue-600 text-white' }]);
                 return;
             }
 
-            // Obtenemos los valores del formulario
             const seniorName = document.getElementById('senior-name').value.trim();
             const familyName = document.getElementById('family-name').value.trim();
             const phone1 = document.getElementById('phone1').value.trim();
             const phone2 = document.getElementById('phone2').value.trim();
 
             try {
-                // Añadimos el nuevo documento a la colección de contactos del usuario
                 const contactsCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'contacts');
-                await addDoc(contactsCollectionRef, {
-                    seniorName,
-                    familyName,
-                    phone1,
-                    phone2,
-                    createdAt: new Date()
-                });
-                console.log("Contacto guardado con éxito.");
-                contactForm.reset(); // Limpiamos el formulario
+                await addDoc(contactsCollectionRef, { seniorName, familyName, phone1, phone2, createdAt: new Date() });
+                showToast('Contacto guardado con éxito.');
+                contactForm.reset();
             } catch (error) {
                 console.error("Error al guardar el contacto: ", error);
-                alert("Hubo un error al guardar el contacto. Inténtalo de nuevo.");
+                showModal('Error', 'Hubo un problema al guardar el contacto. Inténtalo de nuevo.', [{ text: 'Aceptar', class: 'bg-blue-600 text-white' }]);
             }
         });
 
-        /**
-         * Maneja los clics en la lista de contactos, principalmente para borrar.
-         * Se usa delegación de eventos para eficiencia.
-         */
-        contactList.addEventListener('click', async (e) => {
-            if (e.target && e.target.closest('.delete-btn')) {
-                const button = e.target.closest('.delete-btn');
-                const contactId = button.dataset.id;
+        contactList.addEventListener('click', async e => {
+            const deleteButton = e.target.closest('.delete-btn');
+            if (deleteButton) {
+                const contactId = deleteButton.dataset.id;
                 
-                // Confirmación simple antes de borrar
-                if (confirm("¿Estás seguro de que quieres eliminar este contacto?")) {
-                    try {
-                        const contactDocRef = doc(db, 'artifacts', appId, 'users', userId, 'contacts', contactId);
-                        await deleteDoc(contactDocRef);
-                        console.log("Contacto eliminado con éxito.");
-                    } catch (error) {
-                        console.error("Error al eliminar el contacto: ", error);
-                        alert("Hubo un error al eliminar el contacto.");
+                showModal('Confirmar Eliminación', '¿Estás seguro de que quieres eliminar este contacto? Esta acción no se puede deshacer.', [
+                    {
+                        text: 'Cancelar',
+                        class: 'bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200'
+                    },
+                    {
+                        text: 'Eliminar',
+                        class: 'bg-red-600 text-white',
+                        callback: async () => {
+                            try {
+                                const contactDocRef = doc(db, 'artifacts', appId, 'users', userId, 'contacts', contactId);
+                                await deleteDoc(contactDocRef);
+                                showToast('Contacto eliminado.');
+                            } catch (error) {
+                                console.error("Error al eliminar el contacto: ", error);
+                                showToast('Error al eliminar el contacto.', true);
+                            }
+                        }
                     }
-                }
+                ]);
             }
         });
 
         // --- RENDERIZADO DE LA UI ---
-
-        /**
-         * Dibuja los contactos en la pantalla a partir de un array de objetos.
-         * @param {Array} contacts - El array de contactos para mostrar.
-         */
         function renderContacts(contacts) {
-            contactList.innerHTML = ''; // Limpiamos la lista actual
-            
+            contactList.innerHTML = '';
             if (contacts.length === 0) {
-                 contactList.innerHTML = `
-                    <div class="text-center py-8 px-4 bg-white dark:bg-gray-800 rounded-lg shadow">
-                        <p class="text-gray-500 dark:text-gray-400">No hay contactos guardados.</p>
-                        <p class="text-sm text-gray-400 dark:text-gray-500 mt-2">Usa el formulario de arriba para añadir el primero.</p>
-                    </div>`;
+                 contactList.innerHTML = `<div class="text-center py-8 px-4 bg-white dark:bg-gray-800 rounded-lg shadow"><p class="text-gray-500 dark:text-gray-400">No hay contactos guardados.</p><p class="text-sm text-gray-400 dark:text-gray-500 mt-2">Usa el formulario de arriba para añadir el primero.</p></div>`;
                 return;
             }
-
-            contacts.sort((a, b) => a.seniorName.localeCompare(b.seniorName)); // Ordenar alfabéticamente
-
+            contacts.sort((a, b) => (a.seniorName || '').localeCompare(b.seniorName || ''));
             contacts.forEach(contact => {
                 const contactElement = document.createElement('div');
                 contactElement.className = 'bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 fade-in';
                 contactElement.dataset.id = contact.id;
-
                 contactElement.innerHTML = `
                     <div class="flex-grow">
-                        <div class="mb-3">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Adulto Mayor</p>
-                            <p class="font-semibold text-lg text-blue-600 dark:text-blue-400">${contact.seniorName}</p>
-                        </div>
-                        <div class="mb-3">
-                             <p class="text-sm text-gray-500 dark:text-gray-400">Familiar / Encargado</p>
-                            <p class="font-medium text-gray-700 dark:text-gray-300">${contact.familyName}</p>
-                        </div>
+                        <div class="mb-3"><p class="text-sm text-gray-500 dark:text-gray-400">Adulto Mayor</p><p class="font-semibold text-lg text-blue-600 dark:text-blue-400">${contact.seniorName}</p></div>
+                        <div class="mb-3"><p class="text-sm text-gray-500 dark:text-gray-400">Familiar / Encargado</p><p class="font-medium text-gray-700 dark:text-gray-300">${contact.familyName}</p></div>
                         <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-                            <a href="tel:${contact.phone1}" class="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-500">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-telephone-fill" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.28 1.465l-2.135 2.135a1.824 1.824 0 0 0 2.65 2.65l2.135-2.135a1.464 1.464 0 0 1 1.466.28l2.295 1.78a1.745 1.745 0 0 1 .163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.6 18.6 0 0 1-7.01-4.42 18.6 18.6 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877z"/></svg>
-                                ${contact.phone1}
-                            </a>
-                            ${contact.phone2 ? `
-                            <a href="tel:${contact.phone2}" class="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-500">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-telephone-fill" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.28 1.465l-2.135 2.135a1.824 1.824 0 0 0 2.65 2.65l2.135-2.135a1.464 1.464 0 0 1 1.466.28l2.295 1.78a1.745 1.745 0 0 1 .163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.6 18.6 0 0 1-7.01-4.42 18.6 18.6 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877z"/></svg>
-                                ${contact.phone2}
-                            </a>` : ''}
+                            <a href="tel:${contact.phone1}" class="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-500"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.28 1.465l-2.135 2.135a1.824 1.824 0 0 0 2.65 2.65l2.135-2.135a1.464 1.464 0 0 1 1.466.28l2.295 1.78a1.745 1.745 0 0 1 .163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.6 18.6 0 0 1-7.01-4.42 18.6 18.6 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877z"/></svg>${contact.phone1}</a>
+                            ${contact.phone2 ? `<a href="tel:${contact.phone2}" class="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-500"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.28 1.465l-2.135 2.135a1.824 1.824 0 0 0 2.65 2.65l2.135-2.135a1.464 1.464 0 0 1 1.466.28l2.295 1.78a1.745 1.745 0 0 1 .163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.6 18.6 0 0 1-7.01-4.42 18.6 18.6 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877z"/></svg>${contact.phone2}</a>` : ''}
                         </div>
                     </div>
                     <div class="flex-shrink-0 self-start sm:self-center">
                          <button data-id="${contact.id}" class="delete-btn p-2 rounded-full text-gray-400 hover:bg-red-100 dark:hover:bg-red-900 hover:text-red-500 dark:hover:text-red-400 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-trash3-fill" viewBox="0 0 16 16">
-                                <path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5.013l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5-.013l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Z"/>
-                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5.013l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5-.013l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Z"/></svg>
                             <span class="sr-only">Eliminar</span>
                         </button>
-                    </div>
-                `;
+                    </div>`;
                 contactList.appendChild(contactElement);
             });
         }
         
         // --- INICIALIZACIÓN ---
         authenticateUser();
-
     </script>
 </body>
 </html>
