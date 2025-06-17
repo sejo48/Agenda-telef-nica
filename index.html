@@ -41,12 +41,30 @@
             opacity: 1;
         }
     </style>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen flex flex-col items-center p-4 sm:p-6">
 
-    <div id="app-container" class="w-full max-w-2xl mx-auto">
+    <!-- Script para aplicar el tema (claro/oscuro) inmediatamente y evitar un "flash" -->
+    <script>
+        // Revisa si hay un tema guardado en localStorage o si el sistema prefiere el modo oscuro
+        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen flex flex-col items-center p-4 sm:p-6 transition-colors duration-300">
+
+    <div id="app-container" class="w-full max-w-2xl mx-auto relative">
+        <!-- Botón para cambiar de tema (Modo Oscuro/Claro) -->
+        <div class="absolute top-2 right-2 sm:top-4 sm:right-4">
+            <button id="theme-toggle" type="button" class="text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm p-2.5">
+                <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 5.05a1 1 0 010 1.414l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 0zM3 11a1 1 0 100-2H2a1 1 0 100 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+            </button>
+        </div>
+        
         <!-- Encabezado de la aplicación -->
-        <header class="text-center mb-6">
+        <header class="text-center mb-6 pt-8">
             <h1 class="text-3xl sm:text-4xl font-bold text-blue-600 dark:text-blue-400">Agenda de Contactos</h1>
             <p class="text-gray-600 dark:text-gray-400 mt-2">Transporte para Adulto Mayor (Memoria Local)</p>
         </header>
@@ -55,7 +73,6 @@
         <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg mb-8">
             <h2 class="text-xl font-semibold mb-4 text-gray-700 dark:text-gray-300">Añadir Nuevo Contacto</h2>
             <form id="contact-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Columna 1: Nombres -->
                 <div class="space-y-4">
                     <div>
                         <label for="senior-name" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Nombre del Adulto Mayor</label>
@@ -66,7 +83,6 @@
                         <input type="text" id="family-name" placeholder="Ej: Ana Gómez" required class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3">
                     </div>
                 </div>
-                <!-- Columna 2: Teléfonos y Botón -->
                 <div class="space-y-4">
                     <div>
                         <label for="phone1" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Teléfono 1</label>
@@ -83,13 +99,9 @@
             </form>
         </div>
         
-        <!-- Contenedor para la lista de contactos -->
-        <div id="contact-list" class="space-y-4">
-            <!-- Los contactos se insertarán aquí dinámicamente -->
-        </div>
+        <div id="contact-list" class="space-y-4"></div>
     </div>
     
-    <!-- Modal de Confirmación -->
     <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 transition-opacity duration-300 opacity-0 pointer-events-none">
         <div id="modal-content" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 transform transition-all scale-95 opacity-0 duration-300">
             <h3 id="modal-title" class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4"></h3>
@@ -98,7 +110,6 @@
         </div>
     </div>
     
-    <!-- Notificación Toast -->
     <div id="toast" class="fixed bottom-5 right-5 bg-green-600 text-white py-2 px-5 rounded-lg shadow-xl transform translate-y-20 opacity-0 transition-all duration-300 ease-out z-50">
         <p id="toast-message"></p>
     </div>
@@ -106,6 +117,9 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- ELEMENTOS DEL DOM ---
+            const themeToggleButton = document.getElementById('theme-toggle');
+            const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+            const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
             const contactForm = document.getElementById('contact-form');
             const contactList = document.getElementById('contact-list');
             const modal = document.getElementById('modal');
@@ -117,27 +131,52 @@
 
             const STORAGE_KEY = 'seniorTransportContacts';
 
-            // --- LÓGICA DE ALMACENAMIENTO LOCAL ---
+            // --- LÓGICA DEL TEMA OSCURO ---
+            // Muestra el icono correcto (sol o luna) al cargar la página
+            if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                themeToggleLightIcon.classList.remove('hidden');
+            } else {
+                themeToggleDarkIcon.classList.remove('hidden');
+            }
 
-            /**
-             * Obtiene todos los contactos del almacenamiento local.
-             * @returns {Array} Un array de objetos de contacto.
-             */
+            // Listener para el botón de cambio de tema
+            themeToggleButton.addEventListener('click', function() {
+                // Cambia los iconos
+                themeToggleDarkIcon.classList.toggle('hidden');
+                themeToggleLightIcon.classList.toggle('hidden');
+
+                // Si ya hay una preferencia guardada, la invierte
+                if (localStorage.getItem('color-theme')) {
+                    if (localStorage.getItem('color-theme') === 'light') {
+                        document.documentElement.classList.add('dark');
+                        localStorage.setItem('color-theme', 'dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                        localStorage.setItem('color-theme', 'light');
+                    }
+                // Si no hay preferencia, la crea basándose en el estado actual
+                } else {
+                    if (document.documentElement.classList.contains('dark')) {
+                        document.documentElement.classList.remove('dark');
+                        localStorage.setItem('color-theme', 'light');
+                    } else {
+                        document.documentElement.classList.add('dark');
+                        localStorage.setItem('color-theme', 'dark');
+                    }
+                }
+            });
+
+            // --- LÓGICA DE ALMACENAMIENTO LOCAL ---
             function getContacts() {
                 const contacts = localStorage.getItem(STORAGE_KEY);
                 return contacts ? JSON.parse(contacts) : [];
             }
 
-            /**
-             * Guarda un array de contactos en el almacenamiento local.
-             * @param {Array} contacts - El array de contactos a guardar.
-             */
             function saveContacts(contacts) {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts));
             }
 
-            // --- SISTEMA DE NOTIFICACIONES (MODAL Y TOAST) ---
-
+            // --- SISTEMA DE NOTIFICACIONES ---
             function showToast(message) {
                 toastMessage.textContent = message;
                 toast.className = `fixed bottom-5 right-5 bg-green-600 text-white py-2 px-5 rounded-lg shadow-xl transform transition-all duration-300 ease-out z-50 show`;
@@ -167,39 +206,28 @@
                 modal.classList.remove('active');
             }
 
-            // --- LÓGICA PRINCIPAL DE LA APLICACIÓN ---
-
-            /**
-             * Maneja el envío del formulario para agregar un nuevo contacto.
-             */
+            // --- LÓGICA PRINCIPAL ---
             contactForm.addEventListener('submit', (e) => {
                 e.preventDefault();
-                
                 const newContact = {
-                    id: crypto.randomUUID(), // Genera un ID único para cada contacto
+                    id: crypto.randomUUID(),
                     seniorName: document.getElementById('senior-name').value.trim(),
                     familyName: document.getElementById('family-name').value.trim(),
                     phone1: document.getElementById('phone1').value.trim(),
                     phone2: document.getElementById('phone2').value.trim()
                 };
-
                 const contacts = getContacts();
                 contacts.push(newContact);
                 saveContacts(contacts);
-
                 renderContacts();
                 contactForm.reset();
                 showToast('Contacto guardado con éxito.');
             });
 
-            /**
-             * Maneja los clics en la lista de contactos para la eliminación.
-             */
             contactList.addEventListener('click', (e) => {
                 const deleteButton = e.target.closest('.delete-btn');
                 if (deleteButton) {
                     const contactId = deleteButton.dataset.id;
-                    
                     showModal('Confirmar Eliminación', '¿Estás seguro? Esta acción no se puede deshacer.', [
                         { text: 'Cancelar', class: 'bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200' },
                         { text: 'Eliminar', class: 'bg-red-600 text-white',
@@ -216,21 +244,14 @@
             });
 
             // --- RENDERIZADO DE LA UI ---
-            
-            /**
-             * Dibuja (o redibuja) la lista completa de contactos en la pantalla.
-             */
             function renderContacts() {
                 const contacts = getContacts();
-                contactList.innerHTML = ''; // Limpiar la lista actual
-                
+                contactList.innerHTML = '';
                 if (contacts.length === 0) {
                     contactList.innerHTML = `<div class="text-center py-8 px-4 bg-white dark:bg-gray-800 rounded-lg shadow"><p class="text-gray-500 dark:text-gray-400">No hay contactos guardados.</p><p class="text-sm text-gray-400 dark:text-gray-500 mt-2">Usa el formulario para añadir el primero.</p></div>`;
                     return;
                 }
-
                 contacts.sort((a, b) => (a.seniorName || '').localeCompare(b.seniorName || ''));
-
                 contacts.forEach(contact => {
                     const contactElement = document.createElement('div');
                     contactElement.className = 'bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 fade-in';
@@ -254,7 +275,7 @@
             }
 
             // --- INICIALIZACIÓN ---
-            renderContacts(); // Dibuja los contactos iniciales al cargar la página.
+            renderContacts();
         });
     </script>
 </body>
