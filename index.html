@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agenda Telefónica - Adulto Mayor</title>
+    
+    <!-- Tailwind CSS para un diseño moderno y adaptable -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter para mejor legibilidad -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Estilos personalizados -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent; /* Evita el destello azul al tocar en móviles */
+        }
+        /* Animación para la aparición de elementos */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        /* Estilo para el placeholder del input */
+        ::placeholder {
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen flex flex-col items-center p-4 sm:p-6">
+
+    <div class="w-full max-w-2xl mx-auto">
+        <!-- Encabezado de la aplicación -->
+        <header class="text-center mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold text-blue-600 dark:text-blue-400">Agenda de Contactos</h1>
+            <p class="text-gray-600 dark:text-gray-400 mt-2">Transporte para Adulto Mayor</p>
+            <div id="auth-info" class="text-xs text-gray-500 mt-2">Cargando...</div>
+        </header>
+
+        <!-- Formulario para agregar nuevos contactos -->
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700 dark:text-gray-300">Añadir Nuevo Contacto</h2>
+            <form id="contact-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Columna 1: Nombres -->
+                <div class="space-y-4">
+                    <div>
+                        <label for="senior-name" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Nombre del Adulto Mayor</label>
+                        <input type="text" id="senior-name" placeholder="Ej: Juan Pérez" required class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3">
+                    </div>
+                    <div>
+                        <label for="family-name" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Nombre del Familiar / Encargado</label>
+                        <input type="text" id="family-name" placeholder="Ej: Ana Gómez" required class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3">
+                    </div>
+                </div>
+                <!-- Columna 2: Teléfonos y Botón -->
+                <div class="space-y-4">
+                    <div>
+                        <label for="phone1" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Teléfono 1</label>
+                        <input type="tel" id="phone1" placeholder="8888-8888" required class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3">
+                    </div>
+                    <div>
+                        <label for="phone2" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Teléfono 2 (Opcional)</label>
+                        <input type="tel" id="phone2" placeholder="Opcional" class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800">
+                        Guardar Contacto
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Contenedor para la lista de contactos -->
+        <div id="contact-list-container">
+             <div class="flex justify-center items-center py-8" id="loader">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                <p class="ml-4 text-gray-600 dark:text-gray-400">Cargando contactos...</p>
+            </div>
+        </div>
+        <div id="contact-list" class="space-y-4">
+            <!-- Los contactos se insertarán aquí dinámicamente -->
+        </div>
+
+    </div>
+
+    <!-- Módulo de Firebase -->
+    <script type="module">
+        // Importaciones de Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONFIGURACIÓN DE FIREBASE ---
+        
+        // La configuración de Firebase será inyectada aquí por el entorno.
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Obtenemos el ID de la app y del usuario para almacenar los datos de forma segura.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        let userId = null;
+
+        // --- ELEMENTOS DEL DOM ---
+        const contactForm = document.getElementById('contact-form');
+        const contactList = document.getElementById('contact-list');
+        const loader = document.getElementById('loader');
+        const authInfo = document.getElementById('auth-info');
+
+        // --- AUTENTICACIÓN ---
+        
+        /**
+         * Maneja el estado de la autenticación. Cuando el usuario inicia sesión,
+         * se obtiene su ID y se activa el listener para los contactos.
+         */
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("Usuario autenticado:", user.uid);
+                userId = user.uid;
+                authInfo.textContent = `Sesión iniciada. ID: ${userId}`;
+                setupContactListener();
+            } else {
+                console.log("Usuario no autenticado.");
+                userId = null;
+                authInfo.textContent = 'Iniciando sesión anónima...';
+            }
+        });
+
+        /**
+         * Inicia sesión, ya sea con un token personalizado (si está disponible)
+         * o de forma anónima para permitir el uso de la app sin registro.
+         */
+        async function authenticateUser() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Error de autenticación:", error);
+                authInfo.textContent = 'Error al iniciar sesión.';
+            }
+        }
+        
+        // --- LÓGICA DE FIRESTORE ---
+
+        /**
+         * Configura el listener de Firestore (onSnapshot) que se actualiza en tiempo real.
+         * Cada vez que hay un cambio en la base de datos (añadir, borrar), la lista se actualiza sola.
+         */
+        function setupContactListener() {
+            if (!userId) {
+                console.log("No se puede configurar el listener: userId es nulo.");
+                return;
+            }
+            const contactsCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'contacts');
+            const q = query(contactsCollectionRef); // Podríamos añadir orderBy si tuvieramos un timestamp
+
+            onSnapshot(q, (snapshot) => {
+                loader.style.display = 'none'; // Ocultar el loader una vez que llegan los datos
+                const contacts = [];
+                snapshot.forEach((doc) => {
+                    contacts.push({ id: doc.id, ...doc.data() });
+                });
+                renderContacts(contacts);
+            }, (error) => {
+                console.error("Error al obtener contactos:", error);
+                loader.innerHTML = '<p class="text-red-500">Error al cargar los contactos.</p>';
+            });
+        }
+        
+        /**
+         * Maneja el envío del formulario para agregar un nuevo contacto a Firestore.
+         */
+        contactForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!userId) {
+                alert("Debes iniciar sesión para guardar contactos.");
+                return;
+            }
+
+            // Obtenemos los valores del formulario
+            const seniorName = document.getElementById('senior-name').value.trim();
+            const familyName = document.getElementById('family-name').value.trim();
+            const phone1 = document.getElementById('phone1').value.trim();
+            const phone2 = document.getElementById('phone2').value.trim();
+
+            try {
+                // Añadimos el nuevo documento a la colección de contactos del usuario
+                const contactsCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'contacts');
+                await addDoc(contactsCollectionRef, {
+                    seniorName,
+                    familyName,
+                    phone1,
+                    phone2,
+                    createdAt: new Date()
+                });
+                console.log("Contacto guardado con éxito.");
+                contactForm.reset(); // Limpiamos el formulario
+            } catch (error) {
+                console.error("Error al guardar el contacto: ", error);
+                alert("Hubo un error al guardar el contacto. Inténtalo de nuevo.");
+            }
+        });
+
+        /**
+         * Maneja los clics en la lista de contactos, principalmente para borrar.
+         * Se usa delegación de eventos para eficiencia.
+         */
+        contactList.addEventListener('click', async (e) => {
+            if (e.target && e.target.closest('.delete-btn')) {
+                const button = e.target.closest('.delete-btn');
+                const contactId = button.dataset.id;
+                
+                // Confirmación simple antes de borrar
+                if (confirm("¿Estás seguro de que quieres eliminar este contacto?")) {
+                    try {
+                        const contactDocRef = doc(db, 'artifacts', appId, 'users', userId, 'contacts', contactId);
+                        await deleteDoc(contactDocRef);
+                        console.log("Contacto eliminado con éxito.");
+                    } catch (error) {
+                        console.error("Error al eliminar el contacto: ", error);
+                        alert("Hubo un error al eliminar el contacto.");
+                    }
+                }
+            }
+        });
+
+        // --- RENDERIZADO DE LA UI ---
+
+        /**
+         * Dibuja los contactos en la pantalla a partir de un array de objetos.
+         * @param {Array} contacts - El array de contactos para mostrar.
+         */
+        function renderContacts(contacts) {
+            contactList.innerHTML = ''; // Limpiamos la lista actual
+            
+            if (contacts.length === 0) {
+                 contactList.innerHTML = `
+                    <div class="text-center py-8 px-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+                        <p class="text-gray-500 dark:text-gray-400">No hay contactos guardados.</p>
+                        <p class="text-sm text-gray-400 dark:text-gray-500 mt-2">Usa el formulario de arriba para añadir el primero.</p>
+                    </div>`;
+                return;
+            }
+
+            contacts.sort((a, b) => a.seniorName.localeCompare(b.seniorName)); // Ordenar alfabéticamente
+
+            contacts.forEach(contact => {
+                const contactElement = document.createElement('div');
+                contactElement.className = 'bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 fade-in';
+                contactElement.dataset.id = contact.id;
+
+                contactElement.innerHTML = `
+                    <div class="flex-grow">
+                        <div class="mb-3">
+                            <p class="text-sm text-gray-500 dark:text-gray-400">Adulto Mayor</p>
+                            <p class="font-semibold text-lg text-blue-600 dark:text-blue-400">${contact.seniorName}</p>
+                        </div>
+                        <div class="mb-3">
+                             <p class="text-sm text-gray-500 dark:text-gray-400">Familiar / Encargado</p>
+                            <p class="font-medium text-gray-700 dark:text-gray-300">${contact.familyName}</p>
+                        </div>
+                        <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                            <a href="tel:${contact.phone1}" class="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-500">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-telephone-fill" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.28 1.465l-2.135 2.135a1.824 1.824 0 0 0 2.65 2.65l2.135-2.135a1.464 1.464 0 0 1 1.466.28l2.295 1.78a1.745 1.745 0 0 1 .163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.6 18.6 0 0 1-7.01-4.42 18.6 18.6 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877z"/></svg>
+                                ${contact.phone1}
+                            </a>
+                            ${contact.phone2 ? `
+                            <a href="tel:${contact.phone2}" class="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-500">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-telephone-fill" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.28 1.465l-2.135 2.135a1.824 1.824 0 0 0 2.65 2.65l2.135-2.135a1.464 1.464 0 0 1 1.466.28l2.295 1.78a1.745 1.745 0 0 1 .163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.6 18.6 0 0 1-7.01-4.42 18.6 18.6 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877z"/></svg>
+                                ${contact.phone2}
+                            </a>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0 self-start sm:self-center">
+                         <button data-id="${contact.id}" class="delete-btn p-2 rounded-full text-gray-400 hover:bg-red-100 dark:hover:bg-red-900 hover:text-red-500 dark:hover:text-red-400 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-trash3-fill" viewBox="0 0 16 16">
+                                <path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5.013l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5-.013l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Z"/>
+                            </svg>
+                            <span class="sr-only">Eliminar</span>
+                        </button>
+                    </div>
+                `;
+                contactList.appendChild(contactElement);
+            });
+        }
+        
+        // --- INICIALIZACIÓN ---
+        authenticateUser();
+
+    </script>
+</body>
+</html>
